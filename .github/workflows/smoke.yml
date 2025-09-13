@@ -1,12 +1,38 @@
 name: smoke
 on: [push, pull_request]
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - run: docker compose up -d --build
-      - run: sudo apt-get update && sudo apt-get install -y jq
-      - run: chmod +x scripts/smoke.sh
-      - run: ./scripts/smoke.sh
+
+      - name: Start stack
+        run: docker compose up -d --build
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Ensure smoke is executable
+        run: chmod +x scripts/smoke.sh
+
+      - name: Run smoke
+        run: ./scripts/smoke.sh
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --no-color > compose.log || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs
+          path: compose.log
