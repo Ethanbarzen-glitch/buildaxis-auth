@@ -11,6 +11,10 @@ from atlas_auth import decode_and_validate, has_any_role
 app = FastAPI(title="Teams Service", version="0.1.0")
 create_all()
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
 class TeamIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     code: str = Field(min_length=1, max_length=64)
