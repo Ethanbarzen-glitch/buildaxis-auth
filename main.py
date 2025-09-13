@@ -14,6 +14,11 @@ log = logging.getLogger("app")
 
 app = FastAPI(title="BuildAxis Auth API", version="1.0.0")
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+
 allow_origins = [o.strip() for o in os.getenv("ALLOW_ORIGINS", "").split(",") if o.strip()]
 if allow_origins:
     app.add_middleware(

@@ -10,6 +10,10 @@ from atlas_auth import decode_and_validate, has_any_role
 
 app = FastAPI(title="Projects Service", version="0.4.0")
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
 # Initialize schema & constraints
 create_all()
 apply_bootstrap_migrations()
