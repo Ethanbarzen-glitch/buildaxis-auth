@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: auth
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: authpass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      KEY_DIR: /app/keys
+      DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
+      ALLOW_ORIGINS: http://localhost:5173
+      ADMIN_USER: admin
+      ADMIN_PASS: adminpass
+    volumes:
+      - keys:/app/keys
+    ports:
+      - "9001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  projects:
+    build:
+      context: .
+      dockerfile: ./services/projects/Dockerfile
+    environment:
+      AUTH_JWKS_URL: http://api:8000/.well-known/jwks.json
+      AUTH_ISSUER: buildaxis-auth
+      AUTH_AUDIENCE: atlas-ai
+      JWKS_TTL_SEC: "300"
+      PROJECTS_DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    ports:
+      - "9010:8000"
+
+  teams:
+    build:
+      context: .
+      dockerfile: ./services/teams/Dockerfile
+    environment:
+      AUTH_JWKS_URL: http://api:8000/.well-known/jwks.json
+      AUTH_ISSUER: buildaxis-auth
+      AUTH_AUDIENCE: atlas-ai
+      JWKS_TTL_SEC: "300"
+      TEAMS_DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    ports:
+      - "9020:8000"
+
+volumes:
+  pgdata:
+  keys:
