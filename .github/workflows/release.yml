@@ -10,7 +10,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  ORG: ${{ github.repository_owner }}
   TAG: ${{ github.ref_name }}
 
 jobs:
@@ -30,11 +29,14 @@ jobs:
       - name: Build images (compose)
         run: docker compose build
 
+      - name: Lowercase owner for GHCR path
+        run: echo "ORG_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       - name: Tag images for GHCR
         run: |
           for svc in api projects teams; do
             src="buildaxis-auth-$svc"
-            dst="${REGISTRY}/${ORG}/buildaxis-auth-$svc"
+            dst="${REGISTRY}/${ORG_LC}/buildaxis-auth-$svc"
             docker tag "$src" "$dst:${TAG}"
             docker tag "$src" "$dst:latest"
           done
@@ -42,7 +44,7 @@ jobs:
       - name: Push images
         run: |
           for svc in api projects teams; do
-            repo="${REGISTRY}/${ORG}/buildaxis-auth-$svc"
+            repo="${REGISTRY}/${ORG_LC}/buildaxis-auth-$svc"
             docker push "$repo:${TAG}"
             docker push "$repo:latest"
           done
