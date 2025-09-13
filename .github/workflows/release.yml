@@ -1,0 +1,50 @@
+name: release
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build images (compose)
+        run: docker compose build
+
+      - name: Tag & push (api)
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/buildaxis-auth-api
+          docker tag buildaxis-auth-api $IMAGE:${{ github.ref_name }}
+          docker tag buildaxis-auth-api $IMAGE:latest
+          docker push $IMAGE:${{ github.ref_name }}
+          docker push $IMAGE:latest
+
+      - name: Tag & push (projects)
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/buildaxis-auth-projects
+          docker tag buildaxis-auth-projects $IMAGE:${{ github.ref_name }}
+          docker tag buildaxis-auth-projects $IMAGE:latest
+          docker push $IMAGE:${{ github.ref_name }}
+          docker push $IMAGE:latest
+
+      - name: Tag & push (teams)
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/buildaxis-auth-teams
+          docker tag buildaxis-auth-teams $IMAGE:${{ github.ref_name }}
+          docker tag buildaxis-auth-teams $IMAGE:latest
+          docker push $IMAGE:${{ github.ref_name }}
+          docker push $IMAGE:latest
