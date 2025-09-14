@@ -1,0 +1,11 @@
+name: e2e
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  ok:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "e2e OK"
