@@ -15,4 +15,8 @@ dist/
 .idea/
 .vscode/
 *.log
+<<<<<<< HEAD
+/.env
+=======
 /docker-compose.ghcr.yml
+>>>>>>> origin/main
