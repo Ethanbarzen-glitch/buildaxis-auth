@@ -1,8 +1,7 @@
 name: release
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 concurrency:
@@ -19,24 +18,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: api
-            context: .
-            dockerfile: Dockerfile
-          - name: projects
-            context: .
-            dockerfile: services/projects/Dockerfile
-          - name: teams
-            context: .
-            dockerfile: services/teams/Dockerfile
+        service: [api, projects, teams]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup QEMU (multi-arch)
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Setup Buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
@@ -46,30 +36,47 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase owner
-        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
-
-      - name: Build & push (multi-arch + SBOM + provenance)
-        id: build
-        uses: docker/build-push-action@v6
+      - name: Build & push (multi-arch)
+        uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          push: true
+          context: .
+          file: ./services/${{ matrix.service }}/Dockerfile
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ env.OWNER_LC }}/buildaxis-auth-${{ matrix.name }}:${{ github.ref_name }}
-            ghcr.io/${{ env.OWNER_LC }}/buildaxis-auth-${{ matrix.name }}:latest
-          provenance: mode=max        # in-toto/SLSA attestation
-          sbom: true                  # SPDX SBOM as OCI ref
-          build-args: |
-            PYTHONDONTWRITEBYTECODE=1
+          push: true
+          # keep these false; we'll attach attestations explicitly
+          provenance: false
+          sbom: false
+          tags: ghcr.io/${{ github.repository_owner }}/buildaxis-auth-${{ matrix.service }}:${{ github.ref_name }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v3.4.0
 
-      - name: Sign image digest with cosign (keyless OIDC)
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Sign image index (keyless)
         env:
-          COSIGN_EXPERIMENTAL: "1"
-          IMAGE: ghcr.io/${{ env.OWNER_LC }}/buildaxis-auth-${{ matrix.name }}@${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "$IMAGE"
+          COSIGN_YES: "true"
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/buildaxis-auth-${{ matrix.service }}:${{ github.ref_name }}"
+          cosign sign "$IMAGE"
+
+      - name: Attach SBOM attestations (per-arch)
+        env:
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ github.repository_owner }}/buildaxis-auth-${{ matrix.service }}:${{ github.ref_name }}"
+          docker buildx imagetools inspect "$IMAGE" -v > manifest.json
+
+          for arch in amd64 arm64; do
+            DIGEST=$(jq -r --arg a "$arch" '.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest' manifest.json)
+            REF="${IMAGE%@*}@${DIGEST}"
+            echo "Generating SBOM for $REF ($arch)"
+
+            # Generate SPDX JSON with Syft
+            docker run --rm anchore/syft:latest "$REF" -o spdx-json > sbom.json
+
+            # Attach as Cosign attestation (predicate type spdxjson)
+            cosign attest --type spdxjson --predicate sbom.json "$REF"
+          done
