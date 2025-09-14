@@ -1,22 +1,30 @@
 name: release
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ['v*.*.*']
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  docker-release:
+  publish:
+    name: publish (${{ matrix.name }}, ${{ matrix.dockerfile }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: api,      context: ./services/api,      dockerfile: ./services/api/Dockerfile,      suffix: -api }
+          - { name: projects, context: ./services/projects,  dockerfile: ./services/projects/Dockerfile, suffix: -projects }
+          - { name: teams,    context: ./services/teams,     dockerfile: ./services/teams/Dockerfile,    suffix: -teams }
+
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
-      - id: meta
+      - name: Lowercase owner
+        id: meta
         shell: bash
         run: |
           echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
@@ -26,7 +34,8 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -39,27 +48,32 @@ jobs:
           restore-keys: |
             buildx-
 
-      - uses: docker/build-push-action@v6
+      - name: Build & push (multi-arch)
+        uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/${{ steps.meta.outputs.owner_lc }}/${{ steps.meta.outputs.repo_name }}:${{ steps.meta.outputs.tag }}
-            ghcr.io/${{ steps.meta.outputs.owner_lc }}/${{ steps.meta.outputs.repo_name }}:latest
+            ghcr.io/${{ steps.meta.outputs.owner_lc }}/${{ steps.meta.outputs.repo_name }}${{ matrix.suffix }}:${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ steps.meta.outputs.owner_lc }}/${{ steps.meta.outputs.repo_name }}${{ matrix.suffix }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.version=${{ steps.meta.outputs.tag }}
           cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          cache-to:   type=local,dest=/tmp/.buildx-cache-new,mode=max
 
-      - if: always()
+      - name: Move cache
+        if: always()
         run: |
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-      - uses: softprops/action-gh-release@v2
+      - name: Create GitHub Release
+        if: ${{ matrix.name == 'api' }} # run once
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: ${{ steps.meta.outputs.tag }}
+          name:     ${{ steps.meta.outputs.tag }}
           generate_release_notes: true
