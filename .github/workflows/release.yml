@@ -3,11 +3,11 @@ name: release
 on:
   push:
     tags:
-      - 'v*.*.*'   # semver tags
+      - 'v*.*.*'
 
 permissions:
-  contents: write   # for GitHub Release
-  packages: write   # for GHCR push
+  contents: write
+  packages: write
 
 jobs:
   publish:
@@ -17,12 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: api,      dockerfile: services/api/Dockerfile,      suffix: -api }
-          - { name: projects, dockerfile: services/projects/Dockerfile,  suffix: -projects }
-          - { name: teams,    dockerfile: services/teams/Dockerfile,     suffix: -teams }
-
-    env:
-      BUILDKIT_PROGRESS: plain
+          - { name: api,      dockerfile: Dockerfile,                     suffix: -api }
+          - { name: projects, dockerfile: services/projects/Dockerfile,   suffix: -projects }
+          - { name: teams,    dockerfile: services/teams/Dockerfile,      suffix: -teams }
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +27,6 @@ jobs:
 
       - name: Vars (tag/owner)
         id: vars
-        shell: bash
         run: |
           echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
@@ -74,7 +70,6 @@ jobs:
     steps:
       - name: Vars
         id: vars
-        shell: bash
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
