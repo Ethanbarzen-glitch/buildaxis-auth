@@ -18,10 +18,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [api, projects, teams]
+        include:
+          - name: api
+            dockerfile: ./services/api/Dockerfile
+          - name: projects
+            dockerfile: ./services/projects/Dockerfile
+          - name: teams
+            dockerfile: ./services/teams/Dockerfile
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set NS (lowercase owner for GHCR)
+        run: echo "NS=ghcr.io/${{ toLower(github.repository_owner) }}" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -37,46 +46,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push (multi-arch)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./services/${{ matrix.service }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
-          # keep these false; we'll attach attestations explicitly
+          # tag uses LOWERCASED owner via $NS
+          tags: |
+            ${{ env.NS }}/buildaxis-auth-${{ matrix.name }}:${{ github.ref_name }}
+          # keep simple; you already do cosign separately
           provenance: false
           sbom: false
-          tags: ghcr.io/${{ github.repository_owner }}/buildaxis-auth-${{ matrix.service }}:${{ github.ref_name }}
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3.4.0
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Sign image index (keyless)
-        env:
-          COSIGN_YES: "true"
-        run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/buildaxis-auth-${{ matrix.service }}:${{ github.ref_name }}"
-          cosign sign "$IMAGE"
-
-      - name: Attach SBOM attestations (per-arch)
-        env:
-          COSIGN_YES: "true"
-        run: |
-          set -euo pipefail
-          IMAGE="ghcr.io/${{ github.repository_owner }}/buildaxis-auth-${{ matrix.service }}:${{ github.ref_name }}"
-          docker buildx imagetools inspect "$IMAGE" -v > manifest.json
-
-          for arch in amd64 arm64; do
-            DIGEST=$(jq -r --arg a "$arch" '.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest' manifest.json)
-            REF="${IMAGE%@*}@${DIGEST}"
-            echo "Generating SBOM for $REF ($arch)"
-
-            # Generate SPDX JSON with Syft
-            docker run --rm anchore/syft:latest "$REF" -o spdx-json > sbom.json
-
-            # Attach as Cosign attestation (predicate type spdxjson)
-            cosign attest --type spdxjson --predicate sbom.json "$REF"
-          done
