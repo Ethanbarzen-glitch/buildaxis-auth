@@ -2,45 +2,52 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: auth
       POSTGRES_USER: auth
       POSTGRES_PASSWORD: authpass
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      POSTGRES_DB: auth
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -h 127.0.0.1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   api:
     build:
       context: .
       dockerfile: ./Dockerfile
     environment:
-      KEY_DIR: /app/keys
       DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
-      ALLOW_ORIGINS: http://localhost:5173
-      ADMIN_USER: admin
-      ADMIN_PASS: adminpass
-    volumes:
-      - keys:/app/keys
-    ports:
-      - "9001:8000"
+      AUTH_ISSUER: buildaxis-auth
+      AUTH_AUDIENCE: atlas-ai
+      JWKS_TTL_SEC: "300"
+      JWKS_DIR: /keys
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - keys:/keys
+    ports:
+      - "9001:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen(\"http://localhost:8000/healthz\",timeout=2).status==200 else sys.exit(1)"']
+      interval: 10s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   projects:
     build:
       context: .
       dockerfile: ./services/projects/Dockerfile
     environment:
+      PROJECTS_DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
       AUTH_JWKS_URL: http://api:8000/.well-known/jwks.json
       AUTH_ISSUER: buildaxis-auth
       AUTH_AUDIENCE: atlas-ai
-      JWKS_TTL_SEC: "300"
-      PROJECTS_DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
     depends_on:
       db:
         condition: service_healthy
@@ -48,17 +55,23 @@ services:
         condition: service_started
     ports:
       - "9010:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen(\"http://localhost:8000/healthz\",timeout=2).status==200 else sys.exit(1)"']
+      interval: 10s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   teams:
     build:
       context: .
       dockerfile: ./services/teams/Dockerfile
     environment:
+      TEAMS_DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
       AUTH_JWKS_URL: http://api:8000/.well-known/jwks.json
       AUTH_ISSUER: buildaxis-auth
       AUTH_AUDIENCE: atlas-ai
-      JWKS_TTL_SEC: "300"
-      TEAMS_DATABASE_URL: postgresql+psycopg://auth:authpass@db:5432/auth
     depends_on:
       db:
         condition: service_healthy
@@ -66,6 +79,13 @@ services:
         condition: service_started
     ports:
       - "9020:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen(\"http://localhost:8000/healthz\",timeout=2).status==200 else sys.exit(1)"']
+      interval: 10s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
 volumes:
   pgdata:
