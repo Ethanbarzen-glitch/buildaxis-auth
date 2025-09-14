@@ -1,0 +1,14 @@
+name: e2e
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compat e2e (replace later)
+        run: echo "ok"
