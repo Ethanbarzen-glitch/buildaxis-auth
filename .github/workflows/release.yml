@@ -8,13 +8,14 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -29,20 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set NS (lowercase owner for GHCR)
-        run: echo "NS=ghcr.io/${{ toLower(github.repository_owner) }}" >> $GITHUB_ENV
+      - name: Lowercase owner
+        shell: bash
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ env.OWNER_LC }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push (multi-arch)
@@ -52,9 +51,4 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
-          # tag uses LOWERCASED owner via $NS
-          tags: |
-            ${{ env.NS }}/buildaxis-auth-${{ matrix.name }}:${{ github.ref_name }}
-          # keep simple; you already do cosign separately
-          provenance: false
-          sbom: false
+          tags: ghcr.io/${{ env.OWNER_LC }}/buildaxis-auth-${{ matrix.name }}:${{ github.ref_name }}
