@@ -1,0 +1,7 @@
+services:
+  api:
+    image: ghcr.io/ethanbarzen-glitch/buildaxis-auth-api:${TAG:-latest}
+  projects:
+    image: ghcr.io/ethanbarzen-glitch/buildaxis-auth-projects:${TAG:-latest}
+  teams:
+    image: ghcr.io/ethanbarzen-glitch/buildaxis-auth-teams:${TAG:-latest}
