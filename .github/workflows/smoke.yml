@@ -6,11 +6,13 @@ on:
 jobs:
   health:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
     steps:
       - uses: actions/checkout@v4
       - name: Compose up
         run: |
-          echo "TAG=${GITHUB_REF_NAME:-latest}" > .env
+          echo "TAG=$TAG" > .env
           docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d --wait
       - name: Health checks
         run: bash scripts/health.sh
